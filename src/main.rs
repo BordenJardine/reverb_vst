@@ -1,11 +1,8 @@
-mod fft
-use fft::{
-  fft,
-  ifft
-}
+mod wav;
+use wav::load_wav;
 
 fn main() {
-  let impulse_response = load_impulse_response();
+  let impulse_response = load_wav("assets/spring_impulse.wav");
 }
 
 fn print_impulse(impulse_response: &[f32]) {

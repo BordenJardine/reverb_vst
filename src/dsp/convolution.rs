@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
-use std::f32::consts::PI;
-use rustfft::num_complex::Complex;
+use std::sync::Arc;
+use rustfft::{Fft, FftPlanner, num_complex::Complex};
 
 /*
 Typically the best option here is a Segmented Overlap Add or Block Convolver. This works roughly like this
@@ -12,16 +12,8 @@ Typically the best option here is a Segmented Overlap Add or Block Convolver. Th
 - Manage the overlap. Create the output as the first 512 samples of 𝑦𝑛(𝑡) of plus the last 512 from the previous frame 𝑦𝑛−1(𝑡). Keep the last 512 samples from the current frame, 𝑦𝑛(𝑡), as overlap for the next frame.
 */
 
-struct Convolver {
-  segment_size: usize,
-  input_signal: &[f32],
-  ir_signal: &[f32],
-  segment_size: usize,
-  ir_segments: Vec<Vec<Complex<f32>>>,
-  previous_frames: VecDeque<Complex<f32>>> // previous freq domain input signals
-}
-
 //const FFT_SIZE = 1024
+
 /*
 Setup IR
   - segment len is 1/2 fft_size
@@ -48,28 +40,86 @@ Process Input
   - return output vec
 Convolution
 */
-impl Convolver {
 
+pub struct Convolver {
+  fft_size: usize,
+  ir_segments: Vec<Vec<Complex<f32>>>, // freq domain impulse response segments
+  previous_frame_q: VecDeque<Vec<Complex<f32>>>, // previous freq domain input signals
+  previous_output: Vec<f32>, // previous output frame (time domain) for overlap add
+  fft_processor: Arc<dyn Fft<f32>>,
+  ifft_processor: Arc<dyn Fft<f32>>, //inverse ff
+}
+
+impl Convolver {
   // set up saved segmented IR
   pub fn new(ir_signal: &[f32], fft_size: usize) -> Self {
-    segment_size = fft_size / 2;
+    //let (fft_processor, ifft_processor) = init_fft_processors(fft_size);
+    let mut planner = FftPlanner::<f32>::new();
+    let fft_processor = planner.plan_fft_forward(fft_size);
+    let ifft_processor = planner.plan_fft_inverse(fft_size);
 
+    let ir_segments = init_ir_segments(ir_signal, fft_size, &fft_processor);
+    let segment_count = ir_segments.len();
     Self {
-      segment_size: usize,
-      input_signal: &[f32],
-      ir_signal: &[f32],
-      segment_size: usize,
-      previous_frames: VecDeque<Complex<f32>>>,
-      segmented_ir: Vec<Vec<Complex<f32>>>,
+      fft_size,
+      ir_segments,
+      fft_processor,
+      ifft_processor,
+      previous_frame_q: init_previous_frame_q(segment_count, fft_size),
+      previous_output: init_previous_output(fft_size),
     }
   }
 }
 
-// - segment IR buffer (pad with 0s to be fft_size)
-// - FFT and hold onto each IR segment
-pub fn setup_ir(ir_signal: &[f32], fft_size: usize) -> Vec<Vec<Complex<f32>>> {
+// pub fn init_fft_processors(fft_size: usize) -> (dyn Fft<f32>, dyn Fft<f32>) {
+//   let mut planner = FftPlanner::<f32>::new();
+//   let fft = planner.plan_fft_forward(fft_size);
+//   let ifft = planner.plan_fft_inverse(fft_size);
+// 
+//   (fft, ifft)
+// }
+
+pub fn init_previous_output(fft_size: usize) -> Vec<f32> {
+  let mut output = Vec::new();
+  for _ in 0..fft_size / 2 {
+    output.push(0.);
+  }
+  output
 }
 
-segmentize(list: &[f32], segment_size: usize) {
-  
+// - segment IR buffer (pad with 0s to be fft_size)
+// - FFT and hold onto each IR segment
+pub fn init_ir_segments(ir_signal: &[f32], fft_size: usize, fft_processor: &Arc<dyn Fft<f32>>) -> Vec<Vec<Complex<f32>>> {
+  let mut segments = Vec::new();
+  let segment_size = fft_size / 2;
+
+  let mut index = 0;
+  while index < ir_signal.len() {
+    let mut new_segment: Vec<Complex<f32>> = Vec::new();
+    for sample in &ir_signal[index..index+segment_size] {
+      new_segment.push(Complex { re: *sample, im: 0. });
+    }
+    while new_segment.len() < fft_size {
+      new_segment.push(Complex { re: 0., im: 0. });
+    }
+    fft_processor.process(&mut new_segment);
+    segments.push(new_segment);
+    index += segment_size;
+  }
+
+  segments
+}
+
+// queue of previous input segments in the frequency domain (polar notation)
+// init to 0s
+pub fn init_previous_frame_q(segment_count: usize, fft_size: usize) -> VecDeque<Vec<Complex<f32>>> {
+  let mut q = VecDeque::new();
+  for _ in 0..segment_count {
+    let mut empty = Vec::new();
+    for _ in 0..fft_size {
+      empty.push(Complex{ re: 0., im: 0. });
+    }
+    q.push_back(empty);
+  }
+  q
 }
