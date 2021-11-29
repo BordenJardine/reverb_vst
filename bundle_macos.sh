@@ -4,7 +4,7 @@
 # https://github.com/RustAudio/vst-rs/blob/master/osx_vst_bundler.sh
 
 SYNTH_NAME=reverb
-BUILD_OUTPUT=target/release/reverb.dylib
+BUILD_OUTPUT=target/release/libreverb.dylib
 
 # Make the bundle folder
 mkdir -p "$SYNTH_NAME.vst/Contents/MacOS"

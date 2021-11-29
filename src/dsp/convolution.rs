@@ -113,8 +113,11 @@ pub fn segment_buffer(buffer: &[f32], fft_size: usize, fft_processor: &Arc<dyn F
   let mut index = 0;
   while index < buffer.len() {
     let mut new_segment: Vec<Complex<f32>> = Vec::new();
-    for sample in &buffer[index..index+segment_size] {
-      new_segment.push(Complex { re: *sample, im: 0. });
+    for i in index..index+segment_size {
+      match buffer.get(i) {
+        Some(sample) => new_segment.push(Complex { re: *sample, im: 0. }),
+        None => continue
+      }
     }
     while new_segment.len() < fft_size {
       new_segment.push(Complex { re: 0., im: 0. });
