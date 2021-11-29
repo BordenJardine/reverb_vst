@@ -53,12 +53,11 @@ pub struct Convolver {
 impl Convolver {
   // set up saved segmented IR
   pub fn new(ir_signal: &[f32], fft_size: usize) -> Self {
-    //let (fft_processor, ifft_processor) = init_fft_processors(fft_size);
     let mut planner = FftPlanner::<f32>::new();
     let fft_processor = planner.plan_fft_forward(fft_size);
     let ifft_processor = planner.plan_fft_inverse(fft_size);
 
-    let ir_segments = init_ir_segments(ir_signal, fft_size, &fft_processor);
+    let ir_segments = segment_buffer(ir_signal, fft_size, &fft_processor);
     let segment_count = ir_segments.len();
     Self {
       fft_size,
@@ -68,6 +67,24 @@ impl Convolver {
       previous_frame_q: init_previous_frame_q(segment_count, fft_size),
       previous_output: init_previous_output(fft_size),
     }
+  }
+
+  pub fn process(&self, input_buffer: &[f32]) -> Vec<f32> {
+    let len = input_buffer.len();
+    let input_segments = segment_buffer(input_buffer, self.fft_size, &self.fft_processor);
+    // ifft segments
+
+    let mut output: Vec<f32> = Vec::new();
+    for mut segment in input_segments {
+      self.ifft_processor.process(&mut segment);
+      for sample in segment {
+        output.push(sample.re);
+        if output.len() >= len {
+          return output;
+        }
+      }
+    }
+    return output;
   }
 }
 
@@ -87,16 +104,16 @@ pub fn init_previous_output(fft_size: usize) -> Vec<f32> {
   output
 }
 
-// - segment IR buffer (pad with 0s to be fft_size)
-// - FFT and hold onto each IR segment
-pub fn init_ir_segments(ir_signal: &[f32], fft_size: usize, fft_processor: &Arc<dyn Fft<f32>>) -> Vec<Vec<Complex<f32>>> {
+// - segment buffer (pad with 0s to be fft_size)
+// - FFT and hold onto each segment
+pub fn segment_buffer(buffer: &[f32], fft_size: usize, fft_processor: &Arc<dyn Fft<f32>>) -> Vec<Vec<Complex<f32>>> {
   let mut segments = Vec::new();
   let segment_size = fft_size / 2;
 
   let mut index = 0;
-  while index < ir_signal.len() {
+  while index < buffer.len() {
     let mut new_segment: Vec<Complex<f32>> = Vec::new();
-    for sample in &ir_signal[index..index+segment_size] {
+    for sample in &buffer[index..index+segment_size] {
       new_segment.push(Complex { re: *sample, im: 0. });
     }
     while new_segment.len() < fft_size {

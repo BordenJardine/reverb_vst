@@ -28,11 +28,8 @@ impl ReverbVst {
     /// Initializes the VST plugin, along with an optional `HostCallback` handle.
     fn new_maybe_host(maybe_host: Option<HostCallback>) -> Self {
         let host = maybe_host.unwrap_or_default();
-
         let (to_dsp, dsp_recv) = channel();
-
         let state_handle = Arc::new(PluginState::new(host, to_dsp));
-
         let dsp = PluginDsp::new(dsp_recv);
 
         Self {
