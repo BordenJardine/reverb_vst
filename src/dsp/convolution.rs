@@ -45,7 +45,7 @@ pub struct Convolver {
   fft_size: usize,
   ir_segments: Vec<Vec<Complex<f32>>>, // freq domain impulse response segments
   previous_frame_q: VecDeque<Vec<Complex<f32>>>, // previous freq domain input signals
-  previous_output: Vec<f32>, // previous output frame (time domain) for overlap add
+  previous_tail: Vec<f32>, // previous output frame (time domain) for overlap add
   fft_processor: Arc<dyn Fft<f32>>,
   ifft_processor: Arc<dyn Fft<f32>>, //inverse ff
 }
@@ -65,43 +65,98 @@ impl Convolver {
       fft_processor,
       ifft_processor,
       previous_frame_q: init_previous_frame_q(segment_count, fft_size),
-      previous_output: init_previous_output(fft_size),
+      previous_tail: init_previous_tail(fft_size/2),
     }
   }
 
-  pub fn process(&self, input_buffer: &[f32]) -> Vec<f32> {
-    let len = input_buffer.len();
+  pub fn process(&mut self, input_buffer: &[f32]) -> Vec<f32> {
+    let io_len = input_buffer.len();
+    // segment and convert to freq domain
     let input_segments = segment_buffer(input_buffer, self.fft_size, &self.fft_processor);
-    // ifft segments
 
-    let mut output: Vec<f32> = Vec::new();
-    for mut segment in input_segments {
+
+    let mut output_segments: Vec<Vec<Complex<f32>>> = Vec::new();
+    // push front/ pop back
+    for segment in input_segments {
+      self.previous_frame_q.push_front(segment);
+      self.previous_frame_q.pop_back();
+      // multiply
+      output_segments.push(self.convolve_frame());
+    }
+
+    // go back to time domain
+    let mut time_domain: Vec<f32> = Vec::new();
+    for mut segment in output_segments {
       self.ifft_processor.process(&mut segment);
       for sample in segment {
-        output.push(sample.re);
-        if output.len() >= len {
-          return output;
-        }
+        time_domain.push(sample.re);
       }
     }
-    return output;
+
+    // overlap add
+    for (i, sample) in self.previous_tail.iter().enumerate() {
+      match time_domain.get_mut(i) {
+        Some(out_sample) => *out_sample += sample,
+        None => break
+      }
+    }
+
+    // everything outside of the buffer length is the tail for the next run
+    self.previous_tail = time_domain[io_len..time_domain.len()].to_vec();
+
+    // return a buffers worth of signal
+    return time_domain[0..io_len].to_vec();
+  }
+ 
+  // in freq domain
+  // 𝑌𝑛(𝑧)=𝑋𝑛(𝑧)⋅𝐻0(𝑧)+𝑋𝑛−1(𝑧)⋅𝐻1(𝑧)+...+𝑋𝑛−15(𝑧)⋅𝐻15(𝑧)
+  fn convolve_frame(&mut self) -> Vec<Complex<f32>> {
+    //init output to accumulate onto
+    let mut convolved: Vec<Complex<f32>> = Vec::new();
+    for _ in 0..self.fft_size {
+      convolved.push(Complex {re: 0. , im: 0. });
+    }
+
+    for i in 0..self.ir_segments.len() {
+      add_frames(&mut convolved, mult_frames(
+        &self.previous_frame_q[i],
+        &self.ir_segments[i]
+      ));
+    }
+    convolved
   }
 }
 
-// pub fn init_fft_processors(fft_size: usize) -> (dyn Fft<f32>, dyn Fft<f32>) {
-//   let mut planner = FftPlanner::<f32>::new();
-//   let fft = planner.plan_fft_forward(fft_size);
-//   let ifft = planner.plan_fft_inverse(fft_size);
-// 
-//   (fft, ifft)
-// }
-
-pub fn init_previous_output(fft_size: usize) -> Vec<f32> {
-  let mut output = Vec::new();
-  for _ in 0..fft_size / 2 {
-    output.push(0.);
+// mutates the first frame!
+pub fn add_frames(f1: &mut [Complex<f32>], f2: Vec<Complex<f32>>) {
+  for (mut sample1, sample2) in f1.iter_mut().zip(f2) {
+    sample1.re = sample1.re + sample2.re;
+    sample1.im = sample1.im + sample2.im;
   }
-  output
+}
+
+//freq domain multiplication
+//ReY[f] = ReX[f]ReH[f]-ImX[f]ImH[f]
+//ImY[f] = ImX[f]ReH[f] + ReX[f]ImH[f]
+//
+// returns new vec
+pub fn mult_frames(f1: &[Complex<f32>], f2: &[Complex<f32>]) -> Vec<Complex<f32>> {
+  let mut out: Vec<Complex<f32>> = Vec::new();
+  for (sample1, sample2) in f1.iter().zip(f2) {
+    out.push(Complex {
+     re: (sample1.re * sample2.re) - (sample1.im * sample2.im),
+     im: (sample1.im * sample2.re) - (sample1.re * sample2.im)
+    });
+  }
+  out
+}
+
+pub fn init_previous_tail(size: usize) -> Vec<f32> {
+  let mut tail = Vec::new();
+  for _ in 0..size {
+    tail.push(0.);
+  }
+  tail
 }
 
 // - segment buffer (pad with 0s to be fft_size)

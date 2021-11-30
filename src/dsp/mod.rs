@@ -48,12 +48,10 @@ impl PluginDsp {
     // }
     let devisor = 1000.;
     for (output_sample, result_sample) in outputs[0].iter_mut().zip(self.convolver_l.process(&inputs[0]).iter()) {
-        *output_sample = *result_sample / devisor;
-        //*output = 0.;
+      *output_sample = *result_sample / devisor;
     }
     for (output_sample, result_sample) in outputs[1].iter_mut().zip(self.convolver_r.process(&inputs[1]).iter()) {
-        *output_sample = *result_sample / devisor;
-        //*output = 0.;
+      *output_sample = *result_sample / devisor;
     }
   }
 }
