@@ -46,7 +46,7 @@ impl PluginDsp {
     //     *output_sample = *input_sample;
     //   }
     // }
-    let devisor = 1000.;
+    let devisor = 5000.;
     for (output_sample, result_sample) in outputs[0].iter_mut().zip(self.convolver_l.process(&inputs[0]).iter()) {
       *output_sample = *result_sample / devisor;
     }
