@@ -3,18 +3,6 @@ use std::sync::Arc;
 use rustfft::{Fft, FftPlanner, num_complex::Complex};
 
 /*
-Typically the best option here is a Segmented Overlap Add or Block Convolver. This works roughly like this
-
-- Break your 8k impulse response into 16 chunks of 512 each. Zero pad to 1024 and FFT. Now you have 16 frequency domain transfer function vectors 𝐻𝑘(𝑧),𝑘=0,1,2...15
-- At every frame n, you get a new signal block 𝑥𝑛(𝑡) of length 512. Zero pad to 1024 and FFT. Now have the frequency domain signal vector 𝑋𝑛(𝑧). Make sure you keep the last 15 frames around as well, so you have 𝑋𝑛(𝑧),𝑋𝑛−1(𝑧)...𝑋𝑛−15(𝑧)
-- Now multiply the signal vectors with the transfer function vectors and sum up all the results. 𝑌𝑛(𝑧)=𝑋𝑛(𝑧)⋅𝐻0(𝑧)+𝑋𝑛−1(𝑧)⋅𝐻1(𝑧)+...+𝑋𝑛−15(𝑧)⋅𝐻15(𝑧)
-- Inverse FFT, you get 1024 time domain samples, 𝑦𝑛(𝑡)
-- Manage the overlap. Create the output as the first 512 samples of 𝑦𝑛(𝑡) of plus the last 512 from the previous frame 𝑦𝑛−1(𝑡). Keep the last 512 samples from the current frame, 𝑦𝑛(𝑡), as overlap for the next frame.
-*/
-
-//const FFT_SIZE = 1024
-
-/*
 Setup IR
   - segment len is 1/2 fft_size
   - segment IR buffer (pad with 0s to be fft_size)
