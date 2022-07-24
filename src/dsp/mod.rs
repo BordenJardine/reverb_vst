@@ -1,9 +1,3 @@
-//! The plugin's digital signal processing is fully implemented within this module.
-//!
-//! All updates to input parameters are received through message passing to avoid thread locking
-//! during audio processing. In particular, note that parameter smoothing is considered within the
-//! scope of audio processing rather than state management.
-
 use std::sync::mpsc::Receiver;
 use vst::buffer::AudioBuffer;
 use crate::plugin_state::StateUpdate;
@@ -14,7 +8,7 @@ use convolution::Convolver;
 pub mod spring_impulse_response;
 use spring_impulse_response::SPRING_IMPULSE_RESPONSE;
 
-/// Handles all audio processing algorithms for the plugin.
+/// Entry point for audio processing algorithms for the plugin.
 pub(super) struct PluginDsp {
   convolver_l: Convolver,
   convolver_r: Convolver,
