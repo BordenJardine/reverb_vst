@@ -32,14 +32,7 @@ impl PluginDsp {
   pub fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
     let (inputs, mut outputs) = buffer.split();
 
-    //passthru
-    // let mut i = 0;
-    // for (input_buffer, output_buffer) in buffer.zip() {
-    //   i += 1;
-    //   for (input_sample, output_sample) in input_buffer.iter().zip(output_buffer) {
-    //     *output_sample = *input_sample;
-    //   }
-    // }
+    //TODO: DRY
     let devisor = 5000.;
     for (output_sample, result_sample) in outputs[0].iter_mut().zip(self.convolver_l.process(&inputs[0]).iter()) {
       *output_sample = *result_sample / devisor;
